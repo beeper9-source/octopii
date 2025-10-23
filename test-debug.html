@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PII 스캐너 디버그 테스트</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .test-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            min-height: 400px;
+        }
+        .file-input {
+            margin: 10px 0;
+            padding: 10px;
+            border: 2px dashed #ccc;
+            border-radius: 5px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        .result {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 4px solid #007bff;
+        }
+        .error { color: red; }
+        .success { color: green; }
+
+        /* 개인정보 감지 로직 섹션 스타일 */
+        .info-section {
+            background: white;
+            padding: 25px;
+            margin: 20px 0;
+            border-radius: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        .info-section h2 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 25px;
+        }
+
+        .pii-categories {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .pii-category {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 5px solid #3498db;
+        }
+
+        .pii-category h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .pii-category ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+
+        .pii-category li {
+            margin: 5px 0;
+            color: #555;
+        }
+
+        .pii-category code {
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #d63384;
+            font-size: 0.9em;
+        }
+
+        .document-classification, .country-detection {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .document-classification h3, .country-detection h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .doc-types, .countries {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+        }
+
+        .doc-type, .country {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #28a745;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        /* 반응형 디자인 */
+        @media (max-width: 768px) {
+            .test-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .pii-categories {
+                grid-template-columns: 1fr;
+            }
+            
+            .doc-types, .countries {
+                grid-template-columns: 1fr;
+            }
+            
+            body {
+                max-width: 100%;
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 PII 스캐너 디버그 테스트</h1>
+    
+    <!-- 개인정보 감지 로직 설명 섹션 -->
+    <div class="info-section">
+        <h2>📋 개인정보 감지 로직</h2>
+        <div class="pii-categories">
+            <div class="pii-category">
+                <h3>📧 이메일 주소</h3>
+                <p><strong>감지 패턴:</strong></p>
+                <ul>
+                    <li>표준 형식: <code>user@domain.com</code></li>
+                    <li>공백 포함: <code>user @ domain . com</code></li>
+                </ul>
+                <p><strong>정규식:</strong> <code>/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g</code></p>
+            </div>
+
+            <div class="pii-category">
+                <h3>📞 전화번호</h3>
+                <p><strong>지원 형식:</strong></p>
+                <ul>
+                    <li>🇰🇷 한국: <code>010-1234-5678</code>, <code>02-123-4567</code></li>
+                    <li>🇺🇸 미국: <code>(123) 456-7890</code>, <code>123-456-7890</code></li>
+                    <li>🌍 국제: <code>+82-10-1234-5678</code></li>
+                </ul>
+                <p><strong>정규식:</strong> <code>/\b01[016789]-?\d{3,4}-?\d{4}\b/g</code> (한국)</p>
+            </div>
+
+            <div class="pii-category">
+                <h3>💳 금융 정보</h3>
+                <p><strong>감지 항목:</strong></p>
+                <ul>
+                    <li>신용카드: <code>1234 5678 9012 3456</code></li>
+                    <li>계좌번호: <code>123-45-678901</code></li>
+                    <li>라우팅 번호: <code>123456789</code></li>
+                    <li>CVV/CVC: <code>123</code>, <code>1234</code></li>
+                </ul>
+                <p><strong>정규식:</strong> <code>/\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g</code></p>
+            </div>
+
+            <div class="pii-category">
+                <h3>🆔 신분증/식별번호</h3>
+                <p><strong>지원 형식:</strong></p>
+                <ul>
+                    <li>🇺🇸 SSN: <code>123-45-6789</code></li>
+                    <li>🇮🇳 PAN: <code>ABCDE1234F</code></li>
+                    <li>🚗 운전면허: <code>AB123456</code></li>
+                    <li>🇰🇷 주민등록번호: <code>123456-1234567</code></li>
+                    <li>🛂 여권번호: <code>A1234567</code></li>
+                </ul>
+                <p><strong>정규식:</strong> <code>/\b\d{3}-\d{2}-\d{4}\b/g</code> (SSN)</p>
+            </div>
+
+            <div class="pii-category">
+                <h3>🏠 주소 정보</h3>
+                <p><strong>감지 키워드:</strong></p>
+                <ul>
+                    <li>영어: street, avenue, road, city, state, zip</li>
+                    <li>한국어: 주소, 도로, 구, 시, 군, 동, 로, 길</li>
+                </ul>
+                <p><strong>방법:</strong> 키워드 매칭 + 라인 길이 검증</p>
+            </div>
+
+            <div class="pii-category">
+                <h3>🏥 의료 정보</h3>
+                <p><strong>감지 항목:</strong></p>
+                <ul>
+                    <li>환자 ID: <code>P1234567</code></li>
+                    <li>의료 기록 번호: <code>123-45-6789</code></li>
+                    <li>의료 키워드: patient, diagnosis, treatment, 환자, 진단, 처방</li>
+                </ul>
+                <p><strong>방법:</strong> 패턴 매칭 + 키워드 검색</p>
+            </div>
+        </div>
+
+        <div class="document-classification">
+            <h3>📊 문서 타입 자동 분류</h3>
+            <div class="doc-types">
+                <div class="doc-type">
+                    <strong>🚗 운전면허:</strong> driver, license, permit, 운전면허, 면허번호
+                </div>
+                <div class="doc-type">
+                    <strong>🛂 여권:</strong> passport, nationality, citizen, 여권, 여권번호
+                </div>
+                <div class="doc-type">
+                    <strong>💳 신용카드:</strong> credit card, card number, CVV, 신용카드, 카드번호
+                </div>
+                <div class="doc-type">
+                    <strong>🏦 은행 거래내역:</strong> bank statement, account, transaction, 은행, 계좌
+                </div>
+                <div class="doc-type">
+                    <strong>🏥 의료 기록:</strong> medical record, patient, diagnosis, 의료기록, 환자
+                </div>
+                <div class="doc-type">
+                    <strong>🆔 신분증:</strong> national id, identity card, 주민등록증, 신분증
+                </div>
+            </div>
+        </div>
+
+        <div class="country-detection">
+            <h3>🌍 국가별 특화 감지</h3>
+            <div class="countries">
+                <div class="country">
+                    <strong>🇺🇸 미국:</strong> SSN, 라우팅 번호, (123) 456-7890
+                </div>
+                <div class="country">
+                    <strong>🇰🇷 한국:</strong> 주민등록번호, 010- 전화번호, 운전면허
+                </div>
+                <div class="country">
+                    <strong>🇮🇳 인도:</strong> PAN, Aadhaar 번호
+                </div>
+                <div class="country">
+                    <strong>🇬🇧 영국:</strong> NI 번호, National Insurance
+                </div>
+                <div class="country">
+                    <strong>🇨🇦 캐나다:</strong> SIN, Social Insurance Number
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="test-grid">
+        <div class="test-section">
+            <h2>📁 파일 선택 테스트</h2>
+            <div class="file-input">
+                <input type="file" id="testFile" accept=".txt,.md,.log,.csv,.json,.xml,.pdf">
+                <button onclick="testFileSelection()">파일 선택 테스트</button>
+            </div>
+            <div id="fileTestResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📖 파일 읽기 테스트</h2>
+            <button onclick="testFileReading()">파일 읽기 테스트</button>
+            <div id="readTestResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🔍 PII 스캔 테스트</h2>
+            <button onclick="testPIIScan()">PII 스캔 테스트</button>
+            <div id="scanTestResult"></div>
+        </div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+
+        // 파일 선택 테스트
+        function testFileSelection() {
+            const fileInput = document.getElementById('testFile');
+            const resultDiv = document.getElementById('fileTestResult');
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                resultDiv.innerHTML = '<p class="error">❌ 파일이 선택되지 않았습니다.</p>';
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            selectedFile = file;
+            
+            resultDiv.innerHTML = `
+                <div class="result">
+                    <h4>파일 선택 성공!</h4>
+                    <p><strong>파일명:</strong> ${file.name}</p>
+                    <p><strong>크기:</strong> ${file.size} bytes</p>
+                    <p><strong>타입:</strong> ${file.type}</p>
+                    <p><strong>마지막 수정:</strong> ${new Date(file.lastModified).toLocaleString()}</p>
+                    <p class="success">✅ 파일이 성공적으로 선택되었습니다.</p>
+                </div>
+            `;
+        }
+
+        // 파일 읽기 테스트
+        async function testFileReading() {
+            const resultDiv = document.getElementById('readTestResult');
+            
+            if (!selectedFile) {
+                resultDiv.innerHTML = '<p class="error">❌ 먼저 파일을 선택해주세요.</p>';
+                return;
+            }
+            
+            resultDiv.innerHTML = '<p>📖 파일을 읽는 중...</p>';
+            
+            try {
+                const text = await readFileAsText(selectedFile);
+                resultDiv.innerHTML = `
+                    <div class="result">
+                        <h4>파일 읽기 성공!</h4>
+                        <p><strong>텍스트 길이:</strong> ${text.length} 문자</p>
+                        <p><strong>내용 (처음 200자):</strong></p>
+                        <pre>${text.substring(0, 200)}...</pre>
+                        <p class="success">✅ 파일이 성공적으로 읽혔습니다.</p>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ 파일 읽기 실패: ${error.message}</p>`;
+            }
+        }
+
+        // PII 스캔 테스트
+        async function testPIIScan() {
+            const resultDiv = document.getElementById('scanTestResult');
+            
+            if (!selectedFile) {
+                resultDiv.innerHTML = '<p class="error">❌ 먼저 파일을 선택해주세요.</p>';
+                return;
+            }
+            
+            resultDiv.innerHTML = '<p>🔍 PII 스캔 중...</p>';
+            
+            try {
+                const text = await readFileAsText(selectedFile);
+                
+                // 고급 PII 감지
+                const piiResult = scanForPII(text);
+                
+                resultDiv.innerHTML = `
+                    <div class="result">
+                        <h4>🔍 고급 PII 스캔 결과</h4>
+                        
+                        <h5>📧 이메일 주소 (${piiResult.emails.length}개)</h5>
+                        ${piiResult.emails.length > 0 ? 
+                            `<ul>${piiResult.emails.map(email => `<li>${email}</li>`).join('')}</ul>` : 
+                            '<p>발견되지 않음</p>'}
+                        
+                        <h5>📞 전화번호 (${piiResult.phoneNumbers.length}개)</h5>
+                        ${piiResult.phoneNumbers.length > 0 ? 
+                            `<ul>${piiResult.phoneNumbers.map(phone => `<li>${phone}</li>`).join('')}</ul>` : 
+                            '<p>발견되지 않음</p>'}
+                        
+                        <h5>💳 신용카드/계좌번호 (${piiResult.financialInfo.length}개)</h5>
+                        ${piiResult.financialInfo.length > 0 ? 
+                            `<ul>${piiResult.financialInfo.map(info => `<li>${info}</li>`).join('')}</ul>` : 
+                            '<p>발견되지 않음</p>'}
+                        
+                        <h5>🆔 신분증/식별번호 (${piiResult.identifiers.length}개)</h5>
+                        ${piiResult.identifiers.length > 0 ? 
+                            `<ul>${piiResult.identifiers.map(id => `<li>${id}</li>`).join('')}</ul>` : 
+                            '<p>발견되지 않음</p>'}
+                        
+                        <h5>🏠 주소 정보 (${piiResult.addresses.length}개)</h5>
+                        ${piiResult.addresses.length > 0 ? 
+                            `<ul>${piiResult.addresses.map(addr => `<li>${addr}</li>`).join('')}</ul>` : 
+                            '<p>발견되지 않음</p>'}
+                        
+                        <h5>🏥 의료 정보 (${piiResult.medicalInfo.length}개)</h5>
+                        ${piiResult.medicalInfo.length > 0 ? 
+                            `<ul>${piiResult.medicalInfo.map(med => `<li>${med}</li>`).join('')}</ul>` : 
+                            '<p>발견되지 않음</p>'}
+                        
+                        <h5>📊 PII 분류 결과</h5>
+                        <p><strong>분류된 문서 타입:</strong> ${piiResult.documentType || '일반 문서'}</p>
+                        <p><strong>신뢰도:</strong> ${(piiResult.confidence * 100).toFixed(1)}%</p>
+                        <p><strong>출처 국가:</strong> ${piiResult.country || '미확인'}</p>
+                        
+                        <div class="${piiResult.hasPII ? 'error' : 'success'}" style="padding: 10px; border-radius: 5px; margin-top: 10px;">
+                            <strong>${piiResult.hasPII ? '⚠️ 개인정보가 발견되었습니다!' : '✅ 개인정보가 발견되지 않았습니다.'}</strong>
+                            <br>
+                            <small>총 ${piiResult.totalPIIItems}개의 개인정보 항목이 감지되었습니다.</small>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ PII 스캔 실패: ${error.message}</p>`;
+            }
+        }
+
+        // 고급 PII 감지 함수
+        function scanForPII(text) {
+            const result = {
+                emails: [],
+                phoneNumbers: [],
+                financialInfo: [],
+                identifiers: [],
+                addresses: [],
+                medicalInfo: [],
+                documentType: null,
+                confidence: 0,
+                country: null,
+                hasPII: false,
+                totalPIIItems: 0
+            };
+
+            // 1. 이메일 주소 감지 (더 정교한 패턴)
+            const emailPatterns = [
+                /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
+                /\b[A-Za-z0-9._%+-]+\s*@\s*[A-Za-z0-9.-]+\s*\.\s*[A-Z|a-z]{2,}\b/g
+            ];
+            emailPatterns.forEach(pattern => {
+                const matches = text.match(pattern) || [];
+                result.emails.push(...matches);
+            });
+            result.emails = [...new Set(result.emails)]; // 중복 제거
+
+            // 2. 전화번호 감지 (다양한 형식)
+            const phonePatterns = [
+                // 한국 형식
+                /\b01[016789]-?\d{3,4}-?\d{4}\b/g,
+                /\b0\d{1,2}-?\d{3,4}-?\d{4}\b/g,
+                // 미국 형식
+                /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g,
+                // 국제 형식
+                /\b\+?\d{1,3}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}\b/g,
+                // 괄호 형식
+                /\(\d{3}\)\s?\d{3}[-.]?\d{4}\b/g
+            ];
+            phonePatterns.forEach(pattern => {
+                const matches = text.match(pattern) || [];
+                result.phoneNumbers.push(...matches);
+            });
+            result.phoneNumbers = [...new Set(result.phoneNumbers)];
+
+            // 3. 금융 정보 감지
+            const financialPatterns = [
+                // 신용카드 (다양한 형식)
+                /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,
+                // 계좌번호 (한국)
+                /\b\d{3}-\d{2}-\d{6}\b/g,
+                /\b\d{3}-\d{3}-\d{6}\b/g,
+                // 라우팅 번호 (미국)
+                /\b\d{9}\b/g,
+                // CVV/CVC
+                /\b\d{3,4}\b/g
+            ];
+            financialPatterns.forEach(pattern => {
+                const matches = text.match(pattern) || [];
+                result.financialInfo.push(...matches);
+            });
+            result.financialInfo = [...new Set(result.financialInfo)];
+
+            // 4. 신분증/식별번호 감지
+            const identifierPatterns = [
+                // SSN (미국)
+                /\b\d{3}-\d{2}-\d{4}\b/g,
+                // PAN (인도)
+                /\b[A-Z]{5}\d{4}[A-Z]\b/g,
+                // 운전면허 (다양한 형식)
+                /\b[A-Z]{1,2}\d{6,8}\b/g,
+                /\b\d{2}-\d{2}-\d{6}-\d{2}\b/g,
+                // 주민등록번호 (한국)
+                /\b\d{6}-\d{7}\b/g,
+                /\b\d{6}\d{7}\b/g,
+                // 여권번호
+                /\b[A-Z]{1,2}\d{6,9}\b/g
+            ];
+            identifierPatterns.forEach(pattern => {
+                const matches = text.match(pattern) || [];
+                result.identifiers.push(...matches);
+            });
+            result.identifiers = [...new Set(result.identifiers)];
+
+            // 5. 주소 정보 감지
+            const addressKeywords = [
+                'street', 'avenue', 'road', 'drive', 'lane', 'boulevard', 'way', 'circle',
+                'city', 'state', 'zip', 'postal', 'address', '주소', '도로', '구', '시', '군', '동', '로', '길'
+            ];
+            const lines = text.split('\n');
+            lines.forEach(line => {
+                const lineLower = line.toLowerCase();
+                if (addressKeywords.some(keyword => lineLower.includes(keyword))) {
+                    if (line.trim().length > 10) {
+                        result.addresses.push(line.trim());
+                    }
+                }
+            });
+            result.addresses = result.addresses.slice(0, 5); // 최대 5개
+
+            // 6. 의료 정보 감지
+            const medicalKeywords = [
+                'patient', 'diagnosis', 'treatment', 'prescription', 'doctor', 'physician',
+                'hospital', 'clinic', 'medical', 'allergy', 'medication', 'blood type',
+                '환자', '진단', '처방', '의사', '병원', '약물', '혈액형'
+            ];
+            const medicalPatterns = [
+                /\b[A-Z]{1,2}\d{6,8}\b/g, // 환자 ID
+                /\b\d{3}-\d{2}-\d{4}\b/g  // 의료 기록 번호
+            ];
+            
+            medicalPatterns.forEach(pattern => {
+                const matches = text.match(pattern) || [];
+                result.medicalInfo.push(...matches);
+            });
+            
+            // 의료 키워드가 포함된 라인 찾기
+            lines.forEach(line => {
+                const lineLower = line.toLowerCase();
+                if (medicalKeywords.some(keyword => lineLower.includes(keyword))) {
+                    if (line.trim().length > 5) {
+                        result.medicalInfo.push(line.trim());
+                    }
+                }
+            });
+            result.medicalInfo = [...new Set(result.medicalInfo)];
+
+            // 7. 문서 타입 분류
+            result.documentType = classifyDocumentType(text);
+            result.confidence = calculateConfidence(text, result);
+            result.country = determineCountry(text);
+
+            // 8. PII 존재 여부 및 총 개수
+            result.totalPIIItems = result.emails.length + result.phoneNumbers.length + 
+                                 result.financialInfo.length + result.identifiers.length + 
+                                 result.addresses.length + result.medicalInfo.length;
+            result.hasPII = result.totalPIIItems > 0;
+
+            return result;
+        }
+
+        // 문서 타입 분류
+        function classifyDocumentType(text) {
+            const textLower = text.toLowerCase();
+            const classifications = {
+                "Driver's License": {
+                    keywords: ["driver", "license", "permit", "driving", "vehicle", "motor", "class", "endorsement", "restriction", "issued", "expires", "dob", "date of birth", "height", "weight", "eyes", "hair", "sex", "address", "city", "state", "zip", "country", "운전면허", "면허번호"],
+                    threshold: 0.3
+                },
+                "Passport": {
+                    keywords: ["passport", "passport no", "passport number", "nationality", "citizen", "issued by", "authority", "valid until", "expiry", "place of birth", "date of birth", "sex", "type", "code", "issuing country", "여권", "여권번호"],
+                    threshold: 0.3
+                },
+                "Credit Card": {
+                    keywords: ["credit card", "debit card", "card number", "expiry date", "valid thru", "valid through", "cardholder", "cvv", "cvc", "security code", "mastercard", "visa", "amex", "american express", "신용카드", "카드번호"],
+                    threshold: 0.4
+                },
+                "Bank Statement": {
+                    keywords: ["bank statement", "account statement", "account number", "routing number", "balance", "transaction", "deposit", "withdrawal", "bank name", "branch", "account holder", "은행", "계좌", "거래내역"],
+                    threshold: 0.3
+                },
+                "Medical Record": {
+                    keywords: ["medical record", "patient", "diagnosis", "treatment", "prescription", "doctor", "physician", "hospital", "clinic", "medical history", "allergy", "medication", "blood type", "의료기록", "환자", "진단", "처방"],
+                    threshold: 0.3
+                },
+                "National ID": {
+                    keywords: ["national id", "identity card", "citizen id", "personal id", "government id", "id number", "identification", "citizen number", "personal number", "주민등록증", "신분증"],
+                    threshold: 0.3
+                }
+            };
+
+            let bestMatch = null;
+            let bestConfidence = 0;
+
+            for (const [docType, config] of Object.entries(classifications)) {
+                const confidence = calculateDocumentConfidence(textLower, config.keywords);
+                if (confidence > config.threshold && confidence > bestConfidence) {
+                    bestConfidence = confidence;
+                    bestMatch = docType;
+                }
+            }
+
+            return bestMatch;
+        }
+
+        // 문서 신뢰도 계산
+        function calculateDocumentConfidence(text, keywords) {
+            let matches = 0;
+            for (const keyword of keywords) {
+                if (text.includes(keyword.toLowerCase())) {
+                    matches++;
+                }
+            }
+            return matches / keywords.length;
+        }
+
+        // 전체 신뢰도 계산
+        function calculateConfidence(text, result) {
+            const totalPossibleItems = 6; // 이메일, 전화번호, 금융정보, 식별자, 주소, 의료정보
+            const foundItems = [result.emails, result.phoneNumbers, result.financialInfo, 
+                              result.identifiers, result.addresses, result.medicalInfo]
+                              .filter(arr => arr.length > 0).length;
+            
+            return foundItems / totalPossibleItems;
+        }
+
+        // 국가 결정
+        function determineCountry(text) {
+            const textLower = text.toLowerCase();
+            const countryIndicators = {
+                'United States': ['usa', 'united states', 'us', 'america', 'ssn', 'social security', 'routing number'],
+                'India': ['india', 'indian', 'pan', 'permanent account number', 'aadhaar'],
+                'South Korea': ['korea', 'korean', '대한민국', '한국', '주민등록번호', '운전면허', '010-'],
+                'United Kingdom': ['uk', 'united kingdom', 'britain', 'british', 'ni number'],
+                'Canada': ['canada', 'canadian', 'sin', 'social insurance number']
+            };
+
+            for (const [country, indicators] of Object.entries(countryIndicators)) {
+                if (indicators.some(indicator => textLower.includes(indicator))) {
+                    return country;
+                }
+            }
+
+            return null;
+        }
+
+        // 파일 읽기 함수
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                
+                reader.onload = (e) => {
+                    resolve(e.target.result);
+                };
+                
+                reader.onerror = (e) => {
+                    reject(new Error('파일 읽기 실패'));
+                };
+                
+                reader.readAsText(file, 'UTF-8');
+            });
+        }
+    </script>
+</body>
+</html>
